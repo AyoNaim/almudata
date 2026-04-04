@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, Loader2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,8 @@ import { detectNetwork } from "@/utils/network-detector";
 
 const networkList = [
   { id: "1", name: "MTN", icon: "/mtn-logo.svg", color: "bg-yellow-400" },
-  { id: "2", name: "Airtel", icon: "/airtel-logo.png", color: "bg-red-600" },
-  { id: "3", name: "Glo", icon: "/glo-logo.png", color: "bg-green-600" },
+  { id: "3", name: "Airtel", icon: "/airtel-logo.png", color: "bg-red-600" },
+  { id: "2", name: "Glo", icon: "/glo-logo.png", color: "bg-green-600" },
   {
     id: "4",
     name: "9mobile",
@@ -33,16 +33,75 @@ export default function BuyAirtimePage() {
     text: string;
   } | null>(null);
 
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("app_theme");
-    setIsDarkMode(savedTheme !== "light");
-
+  // Sync data from local storage to state
+  const syncDataFromStorage = useCallback(() => {
     const raw = localStorage.getItem("user_session");
     if (raw) {
       const session = JSON.parse(raw);
       setBalance(session.user_data?.balance || "0.00");
     }
   }, []);
+
+  // Refresh logic to fetch new state from server
+  const handleRefresh = useCallback(async () => {
+    try {
+      const raw = localStorage.getItem("user_session");
+      if (!raw) return;
+      const session = JSON.parse(raw);
+      const phone = session.user_data?.phone || localStorage.getItem("phone");
+
+      if (!phone) throw new Error("No phone found for refresh");
+
+      const response = await fetch(
+        "https://almudatasub.com.ng/app/api/user/app-refresh/index.php",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.status === "success") {
+        try {
+          await Haptics.impact({ style: ImpactStyle.Medium });
+        } catch (e) {}
+
+        const user = result.user_data;
+        if (user) {
+          // 1. Update flat keys
+          localStorage.setItem("balance", user.balance);
+          localStorage.setItem("cashback", user.cashback);
+          localStorage.setItem("full_name", user.full_name);
+          if (result.token) localStorage.setItem("token", result.token);
+
+          // 2. Update user_session object to maintain synchronization
+          const updatedSession = {
+            ...session,
+            token: result.token || session.token,
+            user_data: {
+              ...session.user_data,
+              ...user,
+            },
+          };
+          localStorage.setItem("user_session", JSON.stringify(updatedSession));
+        }
+        syncDataFromStorage();
+      }
+    } catch (error) {
+      console.error("Refresh failed:", error);
+    }
+  }, [syncDataFromStorage]);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("app_theme");
+    setIsDarkMode(savedTheme !== "light");
+
+    // Refresh data on page load
+    handleRefresh();
+    syncDataFromStorage();
+  }, [handleRefresh, syncDataFromStorage]);
 
   const handlePhoneChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -61,7 +120,6 @@ export default function BuyAirtimePage() {
   };
 
   const handlePurchase = async () => {
-    // 1. Basic Validations
     if (phoneNumber.length < 10) {
       setMessage({ type: "error", text: "Please enter a valid phone number" });
       return;
@@ -76,18 +134,14 @@ export default function BuyAirtimePage() {
     await Haptics.impact({ style: ImpactStyle.Heavy });
 
     try {
-      // 2. Session & Token Retrieval
-      const rawData = localStorage.getItem("user_session");
-      const userToken = localStorage.getItem("userToken"); // Ensure this is stored during login
-
-      if (!rawData || !userToken) {
+      const userToken =
+        localStorage.getItem("userToken") || localStorage.getItem("token");
+      if (!userToken) {
         throw new Error("Session expired. Please log in again.");
       }
 
-      const session = JSON.parse(rawData);
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 
-      // 3. Prepare JSON Payload
       const payload = {
         phone: phoneNumber,
         amount: amount,
@@ -97,7 +151,6 @@ export default function BuyAirtimePage() {
         ref: `AIR_${Date.now()}`,
       };
 
-      // 4. Send Request as JSON
       const response = await fetch(
         "https://almudatasub.com.ng/app/api/airtime/index.php",
         {
@@ -123,17 +176,7 @@ export default function BuyAirtimePage() {
         );
       }
 
-      // 5. Handle Result
       if (result.status === "success") {
-        // Update local state and balance
-        const finalBalance =
-          result.new_balance ||
-          (parseFloat(balance) - parseFloat(amount)).toFixed(2);
-
-        session.user_data.balance = finalBalance;
-        localStorage.setItem("user_session", JSON.stringify(session));
-        setBalance(finalBalance);
-
         setMessage({
           type: "success",
           text: result.msg || "Airtime purchase successful!",
@@ -141,7 +184,6 @@ export default function BuyAirtimePage() {
         setAmount("");
         await Haptics.notification({ type: NotificationType.Success });
       } else {
-        // Robust error message from your new backend "Debug" mode
         setMessage({
           type: "error",
           text: result.msg || result.debug_log || "Transaction failed",
@@ -155,6 +197,8 @@ export default function BuyAirtimePage() {
       });
       await Haptics.notification({ type: NotificationType.Error });
     } finally {
+      // Refresh user state regardless of success or failure
+      await handleRefresh();
       setIsLoading(false);
     }
   };

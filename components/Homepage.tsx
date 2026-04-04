@@ -238,6 +238,11 @@ export default function FintechDashboard() {
     }
   };
 
+  // --- ADDED: AUTO-REFRESH ON ARRIVAL ---
+  useEffect(() => {
+    handleRefresh();
+  }, [handleRefresh]);
+
   useEffect(() => {
     syncDataFromStorage();
 
@@ -321,13 +326,13 @@ export default function FintechDashboard() {
                   </p>
                   <p className="text-4xl font-bold">₦{userData.cashback}</p>
                 </div>
-                <Button
+                <button
                   onClick={() => setActiveModal("action")}
-                  className="w-full py-7 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-lg active:scale-95 transition-transform"
+                  className="w-full py-7 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-lg active:scale-95 transition-transform flex items-center justify-center gap-2"
                 >
-                  <ArrowRightLeft className="mr-2 h-5 w-5" /> Transfer to Main
+                  <ArrowRightLeft className="h-5 w-5" /> Transfer to Main
                   Balance
-                </Button>
+                </button>
               </div>
             )}
 
