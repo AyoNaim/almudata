@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import {
   X,
   Smartphone,
@@ -7,6 +7,7 @@ import {
   Tv,
   Zap,
   Copy,
+  Check,
   AlertCircle,
   CheckCircle2,
   Clock,
@@ -34,10 +35,11 @@ export default function TransactionReceipt({
   data,
   isDark = true,
 }: ReceiptProps) {
+  const [copied, setCopied] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+
   /**
    * Standardized Status UI Logic
-   * Maps the clean "success" | "pending" | "failed" strings passed from
-   * the parent to the correct visual theme.
    */
   const getStatusConfig = () => {
     switch (data.status) {
@@ -69,7 +71,6 @@ export default function TransactionReceipt({
 
   /**
    * Service Icon Logic
-   * Matches the icon to the transaction type (Data, Airtime, etc.)
    */
   const getServiceIcon = () => {
     const iconSize = 28;
@@ -87,11 +88,30 @@ export default function TransactionReceipt({
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    // Optional: Add a toast notification here if you have one
+    setCopied(true);
+    setShowToast(true);
+
+    // Reset states after delay
+    setTimeout(() => {
+      setCopied(false);
+      setShowToast(false);
+    }, 2000);
   };
 
   return (
     <div className="relative group p-4 sm:p-0">
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[110] animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="bg-emerald-500 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-2">
+            <Check size={14} strokeWidth={3} />
+            <span className="text-xs font-black uppercase tracking-widest">
+              Reference Copied
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Close Button positioned above the receipt */}
       <div className="absolute -top-12 right-4 sm:right-0">
         <DialogClose asChild>
@@ -177,21 +197,32 @@ export default function TransactionReceipt({
                 >
                   Transaction Ref
                 </span>
-                <span className="text-[12px] font-mono opacity-80 break-all max-w-[200px] leading-tight">
+                <span className="text-[12px] font-mono opacity-80 break-all max-w-[200px] leading-tight select-none">
                   {data.ref}
                 </span>
               </div>
               <Button
                 variant="ghost"
-                size="icon"
+                size={copied ? "default" : "icon"}
                 onClick={() => copyToClipboard(data.ref)}
-                className={`h-9 w-9 rounded-full shrink-0 ${
-                  isDark
-                    ? "hover:bg-white/5 text-zinc-400"
-                    : "hover:bg-black/5 text-slate-500"
+                className={`h-9 rounded-full shrink-0 transition-all ${
+                  copied
+                    ? "px-3 bg-emerald-500/10 text-emerald-500"
+                    : isDark
+                    ? "hover:bg-white/5 text-zinc-400 w-9"
+                    : "hover:bg-black/5 text-slate-500 w-9"
                 }`}
               >
-                <Copy size={16} />
+                {copied ? (
+                  <div className="flex items-center gap-1">
+                    <Check size={14} />
+                    <span className="text-[10px] font-black uppercase">
+                      Copied
+                    </span>
+                  </div>
+                ) : (
+                  <Copy size={16} />
+                )}
               </Button>
             </div>
           </div>
