@@ -124,8 +124,9 @@ export default function BuyAirtimePage() {
       setMessage({ type: "error", text: "Please enter a valid phone number" });
       return;
     }
-    if (!amount || Number(amount) < 50) {
-      setMessage({ type: "error", text: "Minimum amount is ₦50" });
+    // Changed minimum amount to 100
+    if (!amount || Number(amount) < 100) {
+      setMessage({ type: "error", text: "Minimum amount is ₦100" });
       return;
     }
 
@@ -176,17 +177,36 @@ export default function BuyAirtimePage() {
         );
       }
 
-      if (result.status === "success") {
+      // Handle the complex nested response format provided in the prompt
+      const controllerData = result.controller_output || {};
+      const statusFromBackend = controllerData.status || result.status;
+
+      let displayMessage =
+        result.msg || controllerData.msg || "Transaction failed";
+
+      // If there is an api_response_log (which is a stringified JSON), parse it to get the real error
+      if (controllerData.api_response_log) {
+        try {
+          const innerLog = JSON.parse(controllerData.api_response_log);
+          if (innerLog.msg) {
+            displayMessage = innerLog.msg;
+          }
+        } catch (e) {
+          // fallback to the previous displayMessage if parsing fails
+        }
+      }
+
+      if (statusFromBackend === "success") {
         setMessage({
           type: "success",
-          text: result.msg || "Airtime purchase successful!",
+          text: displayMessage || "Airtime purchase successful!",
         });
         setAmount("");
         await Haptics.notification({ type: NotificationType.Success });
       } else {
         setMessage({
           type: "error",
-          text: result.msg || result.debug_log || "Transaction failed",
+          text: displayMessage,
         });
         await Haptics.notification({ type: NotificationType.Error });
       }
