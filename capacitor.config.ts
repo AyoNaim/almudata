@@ -11,7 +11,7 @@ const config: CapacitorConfig = {
       backgroundColor: "#ffffff",
       androidScaleType: "CENTER_CROP",
       showSpinner: false,
-      splashFullScreen: true, // This forces it to cover status bars
+      splashFullScreen: true,
       splashImmersive: true,
     },
   },

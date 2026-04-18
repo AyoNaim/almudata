@@ -103,7 +103,7 @@ const Login = () => {
       <div className="min-h-screen w-full flex items-center justify-center bg-white">
         <div className="animate-pulse flex flex-col items-center">
           <img
-            src="./almu_logo.png"
+            src="./almu_bg.png"
             alt="logo"
             width={100}
             height={100}

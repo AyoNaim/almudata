@@ -7,13 +7,14 @@ import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { useRouter } from "next/navigation";
 import { NetworkModal } from "./NetworkModal";
 import { detectNetwork } from "@/utils/network-detector";
+import { AirtimeNetworkModal } from "./AirtimeNetworkModal";
 
 const networkList = [
   { id: "1", name: "MTN", icon: "/mtn-logo.svg", color: "bg-yellow-400" },
-  { id: "3", name: "Airtel", icon: "/airtel-logo.png", color: "bg-red-600" },
+  { id: "4", name: "Airtel", icon: "/airtel-logo.png", color: "bg-red-600" },
   { id: "2", name: "Glo", icon: "/glo-logo.png", color: "bg-green-600" },
   {
-    id: "4",
+    id: "3",
     name: "9mobile",
     icon: "/9mobile-logo.png",
     color: "bg-emerald-900",
@@ -153,7 +154,7 @@ export default function BuyAirtimePage() {
       };
 
       const response = await fetch(
-        "https://almudatasub.com.ng/app/api/airtime/index.php",
+        "https://almudatasub.com.ng/api/airtime_test/index.php",
         {
           method: "POST",
           headers: {
@@ -197,12 +198,14 @@ export default function BuyAirtimePage() {
       }
 
       if (statusFromBackend === "success") {
+        const transRef = result.trans_ref;
         setMessage({
           type: "success",
           text: displayMessage || "Airtime purchase successful!",
         });
         setAmount("");
         await Haptics.notification({ type: NotificationType.Success });
+        setTimeout(() => router.push(`/transactions?ref=${transRef}`), 5000);
       } else {
         setMessage({
           type: "error",

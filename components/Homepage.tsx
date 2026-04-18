@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import AccountUpgradeModal from "./UpgradeAccount";
 
 // --- SERVICE ITEM COMPONENT ---
 const ServiceItem = ({
@@ -66,7 +67,7 @@ export default function FintechDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const adminPhone = "2347033578281";
+  const adminPhone = "2347088138467";
 
   // Initialize with empty strings to prevent hydration mismatch
   const [userData, setUserData] = useState({
@@ -475,7 +476,7 @@ export default function FintechDashboard() {
       </div>
 
       <Card
-        className={`border-none rounded-[2.5rem] overflow-hidden mb-8 shadow-2xl transition-all duration-500 ${
+        className={`relative border-none rounded-[2.5rem] overflow-hidden mb-8 shadow-2xl transition-all duration-500 ${
           isDarkMode ? "bg-[#1c1425]" : "bg-white border border-slate-200"
         }`}
       >
@@ -542,9 +543,11 @@ export default function FintechDashboard() {
               </span>
             </div>
           </div>
+
+          {/* The Account Upgrade Modal Trigger */}
+          <AccountUpgradeModal />
         </CardContent>
       </Card>
-
       <div
         className={`rounded-[2.5rem] p-8 grid grid-cols-3 gap-y-10 gap-x-4 relative border transition-all duration-500 shadow-xl ${
           isDarkMode
@@ -618,7 +621,7 @@ export default function FintechDashboard() {
             } catch (e) {}
             window.open(
               `https://wa.me/${adminPhone}?text=${encodeURIComponent(
-                "Hello, I am using the Almu Data App. I would like to suggest a new service: "
+                "Hello, I am using the Almudatasub App. I would like to suggest a new service: "
               )}`,
               "_blank"
             );
@@ -651,7 +654,7 @@ export default function FintechDashboard() {
             const userName = userData.displayName || "User";
             window.open(
               `https://wa.me/${adminPhone}?text=${encodeURIComponent(
-                `Hello Admin, I am ${userName}. I need assistance with the Almu Data App.`
+                `Hello Admin, I am ${userName}. I need assistance with the Almudatasub App.`
               )}`,
               "_blank"
             );

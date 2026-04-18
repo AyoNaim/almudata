@@ -19,7 +19,8 @@ import { DialogClose } from "@/components/ui/dialog";
 interface ReceiptProps {
   data: {
     id: string;
-    amount: string;
+    amount: string; // This carries the Volume for Data, or Naira for others
+    cost?: string; // New: Carries the actual monetary value
     status: "success" | "pending" | "failed";
     type: "airtime" | "data" | "cable" | "electricity";
     recipient: string;
@@ -91,16 +92,22 @@ export default function TransactionReceipt({
     setCopied(true);
     setShowToast(true);
 
-    // Reset states after delay
     setTimeout(() => {
       setCopied(false);
       setShowToast(false);
     }, 2000);
   };
 
+  // Helper to format the display amount (Naira vs Volume)
+  const renderHeroAmount = () => {
+    if (data.type === "data" && isNaN(Number(data.amount))) {
+      return data.amount; // Render volume like "500MB"
+    }
+    return `₦${parseFloat(data.amount).toLocaleString()}`;
+  };
+
   return (
     <div className="relative group p-4 sm:p-0">
-      {/* Toast Notification */}
       {showToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[110] animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="bg-emerald-500 text-white px-4 py-2 rounded-full shadow-2xl flex items-center gap-2">
@@ -112,7 +119,6 @@ export default function TransactionReceipt({
         </div>
       )}
 
-      {/* Close Button positioned above the receipt */}
       <div className="absolute -top-12 right-4 sm:right-0">
         <DialogClose asChild>
           <Button
@@ -128,7 +134,6 @@ export default function TransactionReceipt({
         </DialogClose>
       </div>
 
-      {/* Main Receipt Card */}
       <div
         className={`p-6 rounded-[2.5rem] transition-all border shadow-2xl ${
           isDark
@@ -136,7 +141,6 @@ export default function TransactionReceipt({
             : "bg-white text-slate-900 border-slate-100"
         }`}
       >
-        {/* Header Section: Icon, Provider, Amount */}
         <div className="flex flex-col items-center text-center mb-8">
           <div
             className={`w-20 h-20 ${status.bg} rounded-full flex items-center justify-center ${status.color} mb-4 shadow-inner`}
@@ -152,8 +156,8 @@ export default function TransactionReceipt({
             {data.provider || "Transaction Receipt"}
           </h2>
 
-          <div className="text-4xl font-black tracking-tighter mb-3">
-            ₦{parseFloat(data.amount).toLocaleString()}
+          <div className="text-4xl font-black tracking-tighter mb-3 uppercase">
+            {renderHeroAmount()}
           </div>
 
           <div
@@ -164,7 +168,6 @@ export default function TransactionReceipt({
           </div>
         </div>
 
-        {/* Details Table */}
         <div
           className={`rounded-3xl p-6 border ${
             isDark
@@ -178,16 +181,26 @@ export default function TransactionReceipt({
               value={data.recipient}
               isDark={isDark}
             />
+
+            {/* Conditional Row: Show Amount Paid separately for Data transactions */}
+            {data.type === "data" && data.cost && (
+              <DetailRow
+                label="Amount Paid"
+                value={`₦${parseFloat(data.cost).toLocaleString()}`}
+                isDark={isDark}
+              />
+            )}
+
             <DetailRow
               label="Service Type"
               value={data.type.charAt(0).toUpperCase() + data.type.slice(1)}
               isDark={isDark}
             />
+
             <DetailRow label="Date & Time" value={data.date} isDark={isDark} />
 
             <Separator className={isDark ? "bg-white/5" : "bg-slate-200"} />
 
-            {/* Transaction Reference Section */}
             <div className="flex justify-between items-start pt-2">
               <div className="flex flex-col">
                 <span
@@ -228,7 +241,6 @@ export default function TransactionReceipt({
           </div>
         </div>
 
-        {/* Cashback / Bonus Section */}
         {data.status === "success" && data.cashback && (
           <div className="mt-4 flex justify-between items-center px-5 py-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
             <div className="flex flex-col">
@@ -249,9 +261,6 @@ export default function TransactionReceipt({
   );
 }
 
-/**
- * Reusable row for detail items
- */
 function DetailRow({
   label,
   value,
