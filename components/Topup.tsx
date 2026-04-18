@@ -518,11 +518,11 @@ export default function FundAccountPage() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <p className="text-xs text-zinc-500">Bank Name</p>
-                  <h4 className="font-bold">OPay</h4>
+                  <h4 className="font-bold">PalmPay</h4>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-zinc-500">Account Name</p>
-                  <h4 className="font-bold">Ibrahim sunusi hamisu</h4>
+                  <h4 className="font-bold">Sahibu Abubakar</h4>
                 </div>
               </div>
               <div
@@ -535,11 +535,11 @@ export default function FundAccountPage() {
                     Account Number
                   </p>
                   <p className="text-lg font-black tracking-wider">
-                    8166139071
+                    8033303340
                   </p>
                 </div>
                 <Button
-                  onClick={() => copyToClipboard("8166139071", "admin_acc")}
+                  onClick={() => copyToClipboard("8033303340", "admin_acc")}
                   variant="ghost"
                   size="icon"
                   className="h-10 w-10 rounded-xl bg-emerald-500/10 text-emerald-500"

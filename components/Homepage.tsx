@@ -67,7 +67,7 @@ export default function FintechDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const adminPhone = "2347088138467";
+  const adminPhone = "2347033578281";
 
   // Initialize with empty strings to prevent hydration mismatch
   const [userData, setUserData] = useState({
