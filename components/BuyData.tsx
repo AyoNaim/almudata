@@ -1,6 +1,12 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
-import { ChevronLeft, Loader2, XCircle, CheckCircle2 } from "lucide-react";
+import {
+  ChevronLeft,
+  Loader2,
+  XCircle,
+  CheckCircle2,
+  Lock,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
@@ -13,6 +19,9 @@ const NETWORK_DATA = [
     id: "1",
     name: "MTN",
     prefixes: [
+      "0803",
+      "07025",
+      "07026",
       "0803",
       "0806",
       "0703",
@@ -49,7 +58,10 @@ const NETWORK_DATA = [
       "0701",
       "0902",
       "0901",
+      "0904",
       "0907",
+      "0912",
+      "0911",
       "0912",
       "0917",
     ],
@@ -80,6 +92,11 @@ export default function BuyDataPage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  // PIN Modal States
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
 
   const syncDataFromStorage = useCallback(() => {
     const raw = localStorage.getItem("user_session");
@@ -202,29 +219,37 @@ export default function BuyDataPage() {
     return plan.userprice;
   };
 
-  const handlePurchase = async (e: React.MouseEvent, plan: any) => {
+  const handlePurchase = (e: React.MouseEvent, plan: any) => {
     e.stopPropagation();
     if (phoneNumber.length < 11) {
       setMessage({ type: "error", text: "Enter valid 11-digit phone number" });
       setTimeout(() => setMessage(null), 5000);
       return;
     }
+    setSelectedPlan(plan);
+    setShowPinModal(true);
+  };
+
+  const confirmPurchase = async () => {
+    if (pin.length < 5) return;
 
     setIsLoading(true);
+    setShowPinModal(false);
     setMessage(null);
     await Haptics.impact({ style: ImpactStyle.Heavy });
 
     try {
       const authToken = localStorage.getItem("userToken");
-      const priceToDebit = getPriceByLevel(plan);
+      const priceToDebit = getPriceByLevel(selectedPlan);
 
       const payload = {
         network: String(selectedNetwork.id),
         phone: phoneNumber,
         ref: `DATA_${Date.now()}`,
         amount: String(priceToDebit),
-        plan: String(plan.pId),
+        plan: String(selectedPlan.pId),
         token: authToken,
+        pin: pin,
       };
 
       const response = await fetch(
@@ -261,6 +286,7 @@ export default function BuyDataPage() {
       });
       await Haptics.notification({ type: NotificationType.Error });
     } finally {
+      setPin("");
       await handleRefresh();
       setIsLoading(false);
       setTimeout(() => setMessage(null), 6000);
@@ -277,6 +303,71 @@ export default function BuyDataPage() {
         isDarkMode ? "bg-[#0f0a14] text-white" : "bg-slate-50 text-slate-900"
       }`}
     >
+      {/* PIN MODAL */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div
+            className={`w-full max-w-sm rounded-[2.5rem] p-8 border shadow-2xl ${
+              isDarkMode
+                ? "bg-[#1c1425] border-white/10"
+                : "bg-white border-slate-200"
+            }`}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-4">
+                <Lock className="text-emerald-500" size={28} />
+              </div>
+              <h2 className="text-xl font-black tracking-tight mb-2 uppercase">
+                Security Check
+              </h2>
+              <p
+                className={`text-xs font-medium mb-8 ${
+                  isDarkMode ? "text-zinc-500" : "text-slate-400"
+                }`}
+              >
+                Please enter your transaction PIN to confirm purchase for{" "}
+                <span className="text-emerald-500">{phoneNumber}</span>
+              </p>
+
+              <Input
+                type="password"
+                inputMode="numeric"
+                maxLength={5}
+                value={pin}
+                autoFocus
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                placeholder="•••••"
+                className={`h-16 text-center text-3xl font-black tracking-[0.5em] rounded-2xl border-2 mb-6 ${
+                  isDarkMode
+                    ? "bg-black/20 border-white/5 focus:border-emerald-500"
+                    : "bg-slate-50 border-slate-100 focus:border-emerald-500"
+                }`}
+              />
+
+              <div className="flex gap-3 w-full">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowPinModal(false);
+                    setPin("");
+                  }}
+                  className="flex-1 h-14 rounded-2xl font-black uppercase text-[10px] tracking-widest"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmPurchase}
+                  disabled={pin.length < 5}
+                  className="flex-[2] h-14 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase text-[10px] tracking-widest shadow-lg shadow-emerald-500/20"
+                >
+                  Confirm
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* NEW LOADING OVERLAY */}
       {isLoading && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-300">
