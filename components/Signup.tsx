@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "sonner";
 
 const NIGERIAN_STATES = [
   "Abia",
@@ -149,27 +150,40 @@ export default function PersonalDetailsScreen() {
 
       if (data.status === "success") {
         localStorage.clear();
-        const storageData = {
-          token: data.token,
-          user_data: {
-            id: String(data.user_data.id),
-            full_name: data.user_data.full_name,
-            phone: data.user_data.phone,
-            email: data.user_data.email,
-            state: data.user_data.state,
-            balance: String(data.user_data.balance || "0"),
-            cashback: String(data.user_data.cashback || "0.00"),
-            token: data.token,
-          },
-        };
+        toast.success("Mission Accomplished! 🚀", {
+          description:
+            "You're officially one of us now. Hang tight, we're teleporting you to the login page in 5 seconds!",
+          duration: 5000,
+          className: "bg-green-600 text-white border-green-700",
+        });
 
-        localStorage.setItem("userToken", storageData.token);
-        localStorage.setItem(
-          "user_session",
-          JSON.stringify(storageData.user_data)
-        );
+        // Redirect after the 5-second grace period
+        setTimeout(() => {
+          console.log("Redirecting...");
 
-        window.location.href = "/dashboard";
+          window.location.href = "/";
+        }, 5000);
+        // const storageData = {
+        //   token: data.token,
+        //   user_data: {
+        //     id: String(data.user_data.id),
+        //     full_name: data.user_data.full_name,
+        //     phone: data.user_data.phone,
+        //     email: data.user_data.email,
+        //     state: data.user_data.state,
+        //     balance: String(data.user_data.balance || "0"),
+        //     cashback: String(data.user_data.cashback || "0.00"),
+        //     token: data.token,
+        //   },
+        // };
+
+        // localStorage.setItem("userToken", storageData.token);
+        // localStorage.setItem(
+        //   "user_session",
+        //   JSON.stringify(storageData.user_data)
+        // );
+
+        // window.location.href = "/dashboard";
       } else {
         alert(data.msg || "Registration failed");
       }
