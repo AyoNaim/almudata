@@ -1,7 +1,7 @@
-<?xml version='1.0' encoding='utf-8' ?>
+<?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">Almudatasub</string>
     <string name="title_activity_main">Almudatasub</string>
-    <string name="package_name">com.fix.almudatasub</string>
-    <string name="custom_url_scheme">com.fix.almudatasub</string>
+    <string name="package_name">com.almudatasub.app</string>
+    <string name="custom_url_scheme">com.almudatasub.app</string>
 </resources>

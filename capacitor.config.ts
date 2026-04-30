@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.fix.almudatasub",
+  appId: "com.almudatasub.app",
   appName: "Almudatasub",
   webDir: "out",
   plugins: {
