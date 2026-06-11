@@ -1,3 +1,8 @@
+now, lets change the frontend a little bit, for the manual account details, 
+lets fetch the new endpoint we just created and lets get the details from
+there, lets change just that (manual funding account details) instead of hardcoding insteadand nothing
+else and return the full, corrected and complete code, with nothing else changed and every other 
+thing preserved as they are:
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -52,12 +57,6 @@ export default function FundAccountPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSubmittingManual, setIsSubmittingManual] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  const [adminBankDetails, setAdminBankDetails] = useState({
-    bankname: "",
-    accountname: "",
-    accountno: "",
-  });
 
   const [manualData, setManualData] = useState({
     senderBank: "",
@@ -134,24 +133,6 @@ export default function FundAccountPage() {
   // Initial Data Fetch
   const fetchData = useCallback(async () => {
     syncDataFromStorage();
-
-    // Fetch live manual configuration details from the site settings endpoint
-    try {
-      const bankResponse = await fetch(
-        "https://almudatasub.com.ng/app/api/user/sitesettings/index.php"
-      );
-      const bankResult = await bankResponse.json();
-      if (bankResult.status === "success" && bankResult.data) {
-        setAdminBankDetails({
-          bankname: bankResult.data.bankname,
-          accountname: bankResult.data.accountname,
-          accountno: bankResult.data.accountno,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to load live manual bank configurations:", error);
-    }
-
     const token = localStorage.getItem("userToken");
     if (!token) return;
 
@@ -542,11 +523,11 @@ export default function FundAccountPage() {
               <div className="flex justify-between items-center mb-4">
                 <div>
                   <p className="text-xs text-zinc-500">Bank Name</p>
-                  <h4 className="font-bold">{adminBankDetails.bankname}</h4>
+                  <h4 className="font-bold">PalmPay</h4>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-zinc-500">Account Name</p>
-                  <h4 className="font-bold">{adminBankDetails.accountname}</h4>
+                  <h4 className="font-bold">Sahibu Abubakar</h4>
                 </div>
               </div>
               <div
@@ -559,11 +540,11 @@ export default function FundAccountPage() {
                     Account Number
                   </p>
                   <p className="text-lg font-black tracking-wider">
-                    {adminBankDetails.accountno}
+                    8033303340
                   </p>
                 </div>
                 <Button
-                  onClick={() => copyToClipboard(adminBankDetails.accountno, "admin_acc")}
+                  onClick={() => copyToClipboard("8033303340", "admin_acc")}
                   variant="ghost"
                   size="icon"
                   className="h-10 w-10 rounded-xl bg-emerald-500/10 text-emerald-500"
