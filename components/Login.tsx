@@ -53,7 +53,7 @@ const Login = () => {
     try {
       // Trigger the Native OS fingerprint/FaceID hardware screen
       await (BiometricAuth as any).authenticate({
-        reason: "Please authenticate to access your account",
+        reason: "Please authenticate to access your account ",
         allowDeviceCredential: true,
       });
 
