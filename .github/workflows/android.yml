@@ -36,16 +36,19 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      # ADDED: Clean the Gradle cache to prevent "Failed to create Jar file" errors
+      - name: Clean Gradle Cache
+        run: rm -rf ~/.gradle/caches/
+
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
-          # assembleDebug creates an APK that is auto-signed for testing
-          bash ./gradlew assembleDebug
+          # ADDED: --no-daemon and memory flags to prevent process crashes
+          ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: almudata-debug-apk
-          # Path points back to the debug folder
           path: android/app/build/outputs/apk/debug/*.apk
