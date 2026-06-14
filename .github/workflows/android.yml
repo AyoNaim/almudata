@@ -19,7 +19,7 @@ jobs:
         with:
           distribution: "zulu"
           java-version: "17"
-          # No cache here to ensure a pure start
+          cache: "gradle"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -28,7 +28,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm install --force
+        run: npm install
 
       - name: Build web app (Static Export)
         run: npm run build
@@ -40,18 +40,12 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          # Nuclear Fix: Create a local gradle home directory to prevent host-level cache corruption
-          mkdir -p gradle_user_home
-          
-          # Run the build, forcing Gradle to use the local folder instead of the system default
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --gradle-user-home=gradle_user_home \
-            --refresh-dependencies \
-            -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
+          # assembleDebug creates an APK that is auto-signed for testing
+          bash ./gradlew assembleDebug
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: almudata-debug-apk
+          name: almu-debug-apk
+          # Path points back to the debug folder
           path: android/app/build/outputs/apk/debug/*.apk
