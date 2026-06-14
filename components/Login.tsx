@@ -2,17 +2,19 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, ArrowUpRight } from "lucide-react";
+import { Eye, ArrowUpRight, Fingerprint } from "lucide-react";
 import Link from "next/link";
 
 const Login = () => {
   // We keep the state intuitive for the UI
+  const [debugData, setDebugData] = useState(null);
   const [formData, setFormData] = useState({ phone: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  const [webAuthnSupported, setWebAuthnSupported] = useState(false);
 
   useEffect(() => {
     const checkSession = () => {
@@ -27,7 +29,134 @@ const Login = () => {
     };
 
     checkSession();
+
+    // Check if WebAuthn (Passkeys) are supported by the platform / browser
+    if (typeof window !== "undefined" && window.PublicKeyCredential) {
+      if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
+        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+          .then((supported) => {
+            setWebAuthnSupported(supported);
+          })
+          .catch(() => setWebAuthnSupported(false));
+      } else {
+        setWebAuthnSupported(true);
+      }
+    }
   }, [router]);
+
+  // Helper to convert base64url credentials ID to ArrayBuffer for WebAuthn assertion
+  const decodeBase64Url = (base64Url: string) => {
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  // Triggered when the fingerprint button is clicked
+  const handleBiometricLogin = async () => {
+    setLoading(true);
+    setError("");
+
+    const savedCredId = localStorage.getItem("biometric_cred_id");
+
+    // CRITICAL FIX: If no biometric key exists locally, fail immediately in the UI.
+    // Triggering navigator.credentials.get with a dummy or empty ID forces the OS 
+    // to launch the generic Passkey/iCloud/Google account selector modal.
+    if (!savedCredId) {
+      setError("No biometric profile found on this device. Please sign in with your password first.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Generate a new challenge for assertion
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+
+      const publicKeyOptions: any = {
+        challenge: challenge,
+        timeout: 60000,
+        userVerification: "required", // Forces direct biometric hardware UI interaction
+        allowCredentials: [
+          {
+            id: decodeBase64Url(savedCredId),
+            type: "public-key",
+            transports: ["internal"], // Strictly locks execution to local device hardware (TouchID/FaceID/Fingerprint)
+          },
+        ],
+      };
+
+      // Prompt the native OS fingerprint/FaceID hardware verification screen directly
+      const assertion = await navigator.credentials.get({
+        publicKey: publicKeyOptions,
+      });
+      const credId = localStorage.getItem("bio_credentials");
+      if (assertion) {
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const response = await fetch(
+          "https://almudatasub.com.ng/app/api/account/login/index.php",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Token ${today}`,
+            },
+            body: JSON.stringify({
+              credentialId: credId,
+              is_biometric: true, // indicating biometric scan was successful
+            }),
+          }
+        );
+
+        const rawText = await response.text();
+        const cleanText = rawText.trim().replace(/^\uFEFF/, "");
+
+        let result;
+        try {
+          result = JSON.parse(cleanText);
+          setDebugData(result);
+        } catch (jsonErr) {
+          console.error("Parsing failed. Raw response was:", rawText);
+          setError("Server communication error. Please try again.");
+          setLoading(false);
+          return;
+        }
+
+        if (result.status === "success") {
+          if (!result.token || result.token.includes("FIX_DATABASE")) {
+            setError(
+              "Account Error: Your API Key is missing in the database. Please contact admin."
+            );
+            setLoading(false);
+            return;
+          }
+
+          const sessionData = {
+            token: result.token,
+            user_data: result.user_data || {},
+          };
+
+          localStorage.setItem("user_session", JSON.stringify(sessionData));
+          localStorage.setItem("userToken", sessionData.token);
+          localStorage.setItem("biometric_cred_id", assertion.id);
+          localStorage.setItem("phone", sessionData.user_data.phone);
+
+          router.push("/dashboard");
+        } else {
+          setError(result.msg || "Invalid biometric credentials or user not found");
+        }
+      }
+    } catch (err) {
+      console.error("Biometric Login Error:", err);
+      setError("Biometric authentication failed or was cancelled.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +164,6 @@ const Login = () => {
     setError("");
 
     try {
-      // 1. Generate the Handshake Token (YYYYMMDD) - ONLY for the login request
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 
       const response = await fetch(
@@ -46,7 +174,6 @@ const Login = () => {
             "Content-Type": "application/json",
             Authorization: `Token ${today}`,
           },
-          // 2. Map "password" to "accesspass" for the backend
           body: JSON.stringify({
             phone: formData.phone,
             accesspass: formData.password,
@@ -54,7 +181,6 @@ const Login = () => {
         }
       );
 
-      // 3. Robust Response Handling
       const rawText = await response.text();
       const cleanText = rawText.trim().replace(/^\uFEFF/, "");
 
@@ -82,9 +208,46 @@ const Login = () => {
           user_data: result.user_data || {},
         };
 
-        // Save the real persistent token from the DB
         localStorage.setItem("user_session", JSON.stringify(sessionData));
         localStorage.setItem("userToken", sessionData.token);
+        
+
+      // Register WebAuthn device biometric key ONLY if not already saved
+      if (webAuthnSupported && !localStorage.getItem("biometric_cred_id")) {
+        try {
+          const challenge = new Uint8Array(32);
+          crypto.getRandomValues(challenge);
+
+          const credential = await navigator.credentials.create({
+            publicKey: {
+              challenge: challenge,
+              rp: { name: "Almu Data Sub" },
+              user: {
+                id: new TextEncoder().encode(formData.phone),
+                name: formData.phone,
+                displayName: formData.phone,
+              },
+              pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+              timeout: 60000,
+              authenticatorSelection: {
+                authenticatorAttachment: "platform",
+                userVerification: "required",
+                residentKey: "discouraged",
+                requireResidentKey: false,
+              },
+            },
+          });
+
+          if (credential) {
+            localStorage.setItem("biometric_cred_id", credential.id);
+            
+            // OPTIONAL: Send this NEW ID to your server here if you need to 
+            // sync the first-time registration to the database
+          }
+        } catch (webAuthnErr) {
+          console.error("Failed to register Biometrics:", webAuthnErr);
+        }
+      }
 
         router.push("/dashboard");
       } else {
@@ -97,7 +260,7 @@ const Login = () => {
       setLoading(false);
     }
   };
-
+  // const credId = localStorage.getItem("bio_credentials");
   if (isChecking) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-white">
@@ -122,34 +285,13 @@ const Login = () => {
       <div className="w-full max-w-sm flex flex-col items-center">
         {/* Logo */}
         <div className="mb-10">
-          {/* <svg
-            width="50"
-            height="50"
-            viewBox="0 0 50 50"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <circle cx="25" cy="15" r="5" fill="black" />
-            <circle cx="15" cy="25" r="5" fill="black" />
-            <circle cx="25" cy="25" r="5" fill="black" />
-            <circle cx="35" cy="25" r="5" fill="black" />
-            <circle cx="25" cy="35" r="5" fill="black" />
-            <circle cx="17" cy="17" r="4" fill="black" />
-            <circle cx="33" cy="33" r="4" fill="black" />
-            <path
-              d="M18 18L22 22M28 22L32 18M18 32L22 28M28 28L32 32"
-              stroke="black"
-              strokeWidth="4"
-              strokeLinecap="round"
-            />
-          </svg> */}
           <img src={"./almu_bg.png"} alt="logo" width={130} height={130} />
         </div>
 
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-center w-full">
           Welcome back, User <span className="text-2xl ml-1">😎</span>
         </h1>
-
+        {/* {debugData && <p className="test-wrap">{JSON.stringify(debugData, null, 2)}</p> } */}
         <button
           type="button"
           onClick={() => router.push("/signup")}
@@ -182,7 +324,7 @@ const Login = () => {
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
-                required
+                required={!loading}
                 value={formData.password}
                 onChange={(e) =>
                   setFormData({ ...formData, password: e.target.value })
@@ -208,19 +350,34 @@ const Login = () => {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center bg-[#bdf522] hover:bg-[#b0eb14] text-black font-semibold py-4 px-4 rounded-md text-sm transition-all relative disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-            {!loading && (
-              <ArrowUpRight
-                className="absolute right-4 w-5 h-5"
-                strokeWidth={2.5}
-              />
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 flex items-center justify-center bg-[#bdf522] hover:bg-[#b0eb14] text-black font-semibold py-4 px-4 rounded-md text-sm transition-all relative disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {loading ? "Signing in..." : "Sign in"}
+              {!loading && (
+                <ArrowUpRight
+                  className="absolute right-4 w-5 h-5"
+                  strokeWidth={2.5}
+                />
+              )}
+            </button>
+
+            {/* Fingerprint / Biometric Authentication Trigger */}
+            {webAuthnSupported && (
+              <button
+                type="button"
+                onClick={handleBiometricLogin}
+                disabled={loading}
+                className="flex items-center justify-center bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 px-4 rounded-md transition-all hover:border-gray-300 disabled:opacity-70"
+                title="Sign in with Biometrics"
+              >
+                <Fingerprint className="w-5 h-5" strokeWidth={2.5} />
+              </button>
             )}
-          </button>
+          </div>
 
           <div className="flex items-center justify-between pt-2">
             <label className="flex items-center gap-2 cursor-pointer group">

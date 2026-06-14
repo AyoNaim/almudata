@@ -67,7 +67,7 @@ export default function FintechDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  const adminPhone = "2347033578281";
+  // const adminPhone = "2347033578281";
 
   // Initialize with empty strings to prevent hydration mismatch
   const [userData, setUserData] = useState({
@@ -77,9 +77,18 @@ export default function FintechDashboard() {
     phone: "",
   });
 
+  const [adminPhone, setAdminDetails] = useState("");
+
   const [activeModal, setActiveModal] = useState<
     null | "selection" | "action" | "success"
   >(null);
+  
+  // --- ADDED: NOTIFICATION STATE ---
+  const [notification, setNotification] = useState<{
+    subject: string;
+    message: string;
+  } | null>(null);
+  
   const [isProcessingTransfer, setIsProcessingTransfer] = useState(false);
 
   /**
@@ -185,6 +194,26 @@ export default function FintechDashboard() {
     }
   }, [syncDataFromStorage]);
 
+  useEffect(() => {
+  const fetchData = async () => {
+    syncDataFromStorage();
+
+    // Fetch live manual configuration details from the site settings endpoint
+    try {
+      const bankResponse = await fetch(
+        "https://almudatasub.com.ng/app/api/user/sitesettings/index.php"
+      );
+      const bankResult = await bankResponse.json();
+      if (bankResult.status === "success" && bankResult.data) {
+        setAdminDetails(bankResult.data.adminphone);
+      }
+    } catch (error) {
+      console.error("Failed to load live manual bank configurations:", error);
+    }
+  };
+  fetchData();
+  }, [])
+
   // Setup PullToRefreshJS
   useEffect(() => {
     // Initialize PTR
@@ -244,6 +273,49 @@ export default function FintechDashboard() {
     handleRefresh();
   }, [handleRefresh]);
 
+  // --- ADDED: NOTIFICATION FETCH LOGIC ---
+  useEffect(() => {
+    const fetchNotification = async () => {
+      // Session storage ensures this ONLY runs once per login session. 
+      // Coming back from the airtime page won't trigger it again.
+      if (sessionStorage.getItem("hasSeenNotification")) return;
+
+      try {
+        const raw = localStorage.getItem("user_session");
+        if (!raw) return;
+        const session = JSON.parse(raw);
+        const phone = session.user_data?.phone || localStorage.getItem("phone");
+
+        if (!phone) return;
+
+        // NOTE: Make sure this URL points exactly to your notification endpoint
+        const response = await fetch(
+          "https://almudatasub.com.ng/app/api/user/notifications/index.php",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone }),
+          }
+        );
+
+        const result = await response.json();
+
+        // Adjust 'result.data' if your API structure nests the subject/message differently
+        if (result.status === "success" && result.data) {
+          setNotification({
+            subject: result.data.subject || "Important Notice",
+            message: result.data.msg,
+          });
+          sessionStorage.setItem("hasSeenNotification", "true");
+        }
+      } catch (error) {
+        console.error("Notification fetch failed:", error);
+      }
+    };
+
+    fetchNotification();
+  }, []);
+
   useEffect(() => {
     syncDataFromStorage();
 
@@ -292,6 +364,43 @@ export default function FintechDashboard() {
         isDarkMode ? "bg-[#0f0a14] text-white" : "bg-slate-50 text-slate-900"
       }`}
     >
+      {/* ADDED: PREMIUM NOTIFICATION MODAL */}
+      {notification && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center px-6">
+          <div
+            onClick={() => setNotification(null)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity"
+          />
+          <div
+            className={`relative w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl transform transition-all scale-100 ${
+              isDarkMode
+                ? "bg-[#1c1425] border border-white/10 text-white"
+                : "bg-white border border-slate-100 text-slate-900"
+            }`}
+          >
+            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+              <MessageSquare className="h-8 w-8" />
+            </div>
+            <h3 className="mb-3 text-center text-2xl font-bold tracking-tight">
+              {notification.subject}
+            </h3>
+            <p
+              className={`mb-8 text-center text-sm leading-relaxed ${
+                isDarkMode ? "text-gray-400" : "text-slate-500"
+              }`}
+            >
+              {notification.message}
+            </p>
+            <Button
+              onClick={() => setNotification(null)}
+              className="w-full rounded-2xl bg-emerald-500 py-6 text-lg font-bold text-white transition-transform active:scale-95 hover:bg-emerald-600"
+            >
+              OK
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Modals */}
       {activeModal && (
         <>

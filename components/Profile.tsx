@@ -20,7 +20,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { useRouter } from "next/navigation";
-import { BiometricService } from "@/utils/biometricAuth";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -70,8 +69,7 @@ export default function ProfilePage() {
       const data = session.user_data;
       setUserData({
         full_name: data.full_name || "N/A",
-        username:
-          data.full_name?.toLowerCase().replace(/\s+/g, "_") || "user_unknown",
+        username: data.full_name?.toLowerCase().replace(/\s+/g, "_") || "user_unknown",
         phone: data.phone || "No phone linked",
         balance: data.balance || "0.00",
         level: data.level || "Member",
@@ -106,9 +104,7 @@ export default function ProfilePage() {
       const result = await response.json();
 
       if (result.status === "success") {
-        try {
-          await Haptics.impact({ style: ImpactStyle.Medium });
-        } catch (e) {}
+        try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch (e) {}
 
         const user = result.user_data;
         if (user) {
@@ -145,70 +141,129 @@ export default function ProfilePage() {
 
     syncDataFromStorage();
 
-    BiometricService.isAvailable().then((available) => {
-      setIsBiometricAvailable(available);
-      if (available) {
-        const isEnrolled = localStorage.getItem("biometrics_enabled") === "true";
-        setBiometricsEnabled(isEnrolled);
-      }
-    });
+    // Native WebAuthn availability check
+    if (window.PublicKeyCredential) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then((available) => {
+          setIsBiometricAvailable(available);
+          if (available) {
+            const isEnrolled = localStorage.getItem("biometrics_enabled") === "true";
+            setBiometricsEnabled(isEnrolled);
+          }
+        })
+        .catch(console.error);
+    } else {
+      setIsBiometricAvailable(false);
+    }
 
     setLoading(false);
   }, [syncDataFromStorage]);
 
-  const handleToggleBiometrics = async () => {
-    try {
-      await Haptics.impact({ style: ImpactStyle.Medium });
-    } catch (e) {}
+const handleToggleBiometrics = async () => {
+    try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch (e) {}
 
     if (biometricsEnabled) {
-      await BiometricService.clearCredentials();
+      // Disabling Biometrics
       localStorage.setItem("biometrics_enabled", "false");
+      localStorage.removeItem("bio_phone");
+      localStorage.removeItem("bio_pass");
       setBiometricsEnabled(false);
     } else {
+      // Enabling Biometrics via WebAuthn
       const raw = localStorage.getItem("user_session");
       if (!raw) return;
-      const session = JSON.parse(raw);
-      const token = session.token || localStorage.getItem("token") || "";
 
-      if (!token) {
-        alert("Authentication context missing. Please re-login to synchronize.");
+      if (!window.PublicKeyCredential) {
+        alert("Biometrics not supported on this device/browser.");
         return;
       }
 
-      const success = await BiometricService.enroll(token);
-      if (success) {
-        localStorage.setItem("biometrics_enabled", "true");
-        setBiometricsEnabled(true);
-        try {
-          await Haptics.notification({ type: NotificationType.Success });
-        } catch (e) {}
-      } else {
-        try {
-          await Haptics.notification({ type: NotificationType.Error });
-        } catch (e) {}
+      try {
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const userID = new Uint8Array(16);
+        window.crypto.getRandomValues(userID);
+
+        // Triggers the Android/iOS Fingerprint or FaceID enrollment scanner
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge: challenge,
+            rp: {
+              name: "AlmuDataSub",
+            },
+            user: {
+              id: userID,
+              name: userData.phone || "user",
+              displayName: userData.full_name || "User",
+            },
+            pubKeyCredParams: [
+              { type: "public-key", alg: -7 },   // ES256
+              { type: "public-key", alg: -257 }, // RS256
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform", // Forces hardware biometrics
+              userVerification: "required",
+              residentKey: "discouraged",          // FIX: Prevents forcing iCloud/Google Passkey UI
+              requireResidentKey: false,           // FIX: Demotes to local device-bound biometric key
+            },
+            timeout: 60000,
+          },
+        });
+
+        if (credential) {
+          const credIdString = typeof credential.id === 'string' ? credential.id : window.btoa(String.fromCharCode(...new Uint8Array(credential.id)));
+          localStorage.setItem("bio_credentials", credIdString);
+          
+          // --- SEND TO BACKEND ENDPOINT ---
+          const response = await fetch("https://almudatasub.com.ng/app/api/user/register-biometric/index.php", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              phone: userData.phone,
+              credential_id: credential.id
+            })
+          });
+          
+          const result = await response.json();
+
+          if (result.status === "success") {
+            localStorage.setItem("biometrics_enabled", "true");
+            localStorage.setItem("bio_phone", userData.phone);
+            setBiometricsEnabled(true);
+            
+            try { await Haptics.notification({ type: NotificationType.Success }); } catch (e) {}
+            alert("Biometric authentication successfully enabled and saved!");
+          } else {
+            try { await Haptics.notification({ type: NotificationType.Error }); } catch (e) {}
+            alert(result.msg || "Biometrics scanned, but failed to save to database.");
+          }
+        }
+      } catch (err) {
+        console.error("Biometric enrollment error:", err);
+        try { await Haptics.notification({ type: NotificationType.Error }); } catch (e) {}
         alert("Could not register biometrics. Please ensure your fingerprint or Face ID is set up in your phone settings.");
       }
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await Haptics.impact({ style: ImpactStyle.Heavy });
-    } catch (e) {}
-    
-    await BiometricService.clearCredentials();
+    try { await Haptics.impact({ style: ImpactStyle.Heavy }); } catch (e) {}
     localStorage.removeItem("user_session");
-    localStorage.clear();
-    
-    try {
-      await Haptics.notification({ type: NotificationType.Success });
-    } catch (e) {}
+    localStorage.removeItem("balance");
+    localStorage.removeItem("token");
+    localStorage.removeItem("userToken");
+    localStorage.removeItem("cashback");
+    localStorage.removeItem("full_name");
+    localStorage.removeItem("app_theme");
+    sessionStorage.clear();
+    // localStorage.clear();
+    try { await Haptics.notification({ type: NotificationType.Success }); } catch (e) {}
     router.push("/");
   };
 
-  // --- PASSWORD & PIN MUTATION WORKFLOWS ---
-  
   const resetFormState = () => {
     setModalStage("request");
     setOtp("");
@@ -221,12 +276,9 @@ export default function ProfilePage() {
   };
 
   const openSecurityModal = async (type: "password" | "pin") => {
-    try {
-      await Haptics.impact({ style: ImpactStyle.Medium });
-    } catch (e) {}
+    try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch (e) {}
     setActiveModal(type);
     resetFormState();
-    // Pre-populate email dynamically if context exists
     if (userData.email) {
       setFormEmail(userData.email);
     }
@@ -259,10 +311,7 @@ export default function ProfilePage() {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formEmail.trim(),
-          action: "request"
-        })
+        body: JSON.stringify({ email: formEmail.trim(), action: "request" })
       });
 
       const data = await response.json();

@@ -72,7 +72,7 @@ export default function ForgotPasswordEmail() {
 
     try {
       const response = await fetch(
-        "https://almudatasub.com.ng/app/api/user/forgot-password/index.php",
+        "https://almudatasub.com.ng/app/api/user/forgot-password-login/index.php",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -87,7 +87,10 @@ export default function ForgotPasswordEmail() {
       const data = await response.json();
 
       if (data.status === "success") {
+        localStorage.setItem("user_session", JSON.stringify(data));
+        localStorage.setItem("userToken", data.token);
         router.push("/dashboard");
+
       } else {
         alert(data.msg || "Invalid or expired code");
         setOtp(["", "", "", "", ""]);

@@ -69,13 +69,28 @@ export const BiometricService = {
   /**
    * DISABLE: Delete credentials if the user logs out or disables the feature
    */
-  async clearCredentials(): Promise<void> {
-    try {
-      await NativeBiometric.deleteCredentials({
-        server: STORAGE_KEY,
-      });
-    } catch (error) {
-      console.error('Failed to clear credentials:', error);
+async clearCredentials(): Promise<void> {
+  // 1. Guard clause: Skip execution if we are running in a standard web browser dev environment
+  if (typeof window !== 'undefined' && !/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    console.warn("NativeBiometric skipped: Storing/deleting device credentials is not supported on standard web browsers.");
+    return;
+  }
+
+  // NOTE: If you are using standard Capacitor, you can replace the check above with this cleaner line:
+  // if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    await NativeBiometric.deleteCredentials({
+      server: "almudatasub.com.ng", // Ensure this matches your setup identifier
+    });
+  } catch (error: any) {
+    // 2. Double-safety catch: Absorb the error if the plugin still complains about missing web implementation
+    if (error?.message?.includes("not implemented") || error?.toString().includes("not implemented")) {
+      console.warn("Biometric deletion skipped: Method not implemented on this platform wrapper.");
+    } else {
+      // Re-throw or handle real native errors (e.g., hardware errors)
+      console.error("Actual biometric clear error:", error);
     }
   }
+}
 };

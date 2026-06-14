@@ -88,6 +88,7 @@ export default function BuyDataPage() {
   const [allPlans, setAllPlans] = useState<any[]>([]);
   const [selectedNetwork, setSelectedNetwork] = useState(NETWORK_DATA[0]);
   const [isManualNetwork, setIsManualNetwork] = useState(false);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -294,7 +295,12 @@ export default function BuyDataPage() {
   };
 
   const currentPlans = allPlans
-    .filter((plan) => String(plan.datanetwork) === selectedNetwork.id)
+    .filter(
+      (plan) =>
+        String(plan.datanetwork) === selectedNetwork.id &&
+        selectedType &&
+        plan.type?.toLowerCase() === selectedType.toLowerCase()
+    )
     .sort((a, b) => Number(getPriceByLevel(a)) - Number(getPriceByLevel(b)));
 
   return (
@@ -498,8 +504,12 @@ export default function BuyDataPage() {
             maxLength={11}
             value={phoneNumber}
             onChange={(e) => {
-              setPhoneNumber(e.target.value.replace(/\D/g, ""));
+              const val = e.target.value.replace(/\D/g, "");
+              setPhoneNumber(val);
               setIsManualNetwork(false);
+              if (val.length < 11) {
+                setSelectedType(null);
+              }
             }}
             className="h-8 bg-transparent border-none text-xl font-black focus-visible:ring-0 p-0 placeholder:text-zinc-800"
             placeholder="08030000000"
@@ -507,68 +517,105 @@ export default function BuyDataPage() {
         </div>
       </div>
 
-      <div className="px-5 space-y-4 pb-10">
-        <div className="flex justify-between items-center px-2">
-          <h3 className="text-[11px] font-black uppercase tracking-[0.3em] opacity-50">
-            Available Bundles
+      {/* ANIMATED DATA TYPE MENU (Only mounts when phone number is fully provided) */}
+      {phoneNumber.length === 11 && (
+        <div className="mx-5 mb-8 animate-in fade-in slide-in-from-top-3 duration-300">
+          <h3 className="text-[11px] font-black uppercase tracking-[0.3em] opacity-50 mb-3 px-2">
+            Select Data Type
           </h3>
-          <div className="h-[1px] flex-1 bg-current opacity-5 ml-4" />
-        </div>
-
-        {isFetchingPlans ? (
-          <div className="flex justify-center py-10">
-            <Loader2 className="animate-spin text-emerald-500" />
+          <div className="flex gap-2 w-full">
+            {["SME", "Gifting", "Corporate"].map((type) => {
+              const isSelected = selectedType?.toLowerCase() === type.toLowerCase();
+              return (
+                <button
+                  key={type}
+                  onClick={() => {
+                    setSelectedType(type);
+                    try {
+                      Haptics.impact({ style: ImpactStyle.Light });
+                    } catch (e) {}
+                  }}
+                  className={`flex-1 text-center py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all duration-200 border ${
+                    isSelected
+                      ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20 scale-[1.02]"
+                      : isDarkMode
+                      ? "bg-[#1c1425] border-white/5 text-zinc-400 active:bg-zinc-900"
+                      : "bg-white border-slate-100 text-slate-600 shadow-sm active:bg-slate-100"
+                  }`}
+                >
+                  {type}
+                </button>
+              );
+            })}
           </div>
-        ) : currentPlans.length > 0 ? (
-          currentPlans.map((plan) => (
-            <div
-              key={plan.pId}
-              onClick={(e) => !isLoading && handlePurchase(e, plan)}
-              className={`group rounded-[2rem] p-5 flex justify-between items-center gap-3 border transition-all cursor-pointer active:scale-95 w-full ${
-                isDarkMode
-                  ? "bg-[#1c1425] border-white/5"
-                  : "bg-white border-slate-100 shadow-sm"
-              }`}
-            >
-              <div className="flex-1 min-w-0 overflow-hidden">
-                <p className="text-xl font-black tracking-tighter truncate group-hover:text-emerald-500 transition-colors">
-                  {plan.name}
-                </p>
-                <div className="flex items-center gap-2 mt-2">
-                  <span
-                    className={`text-[8px] px-2 py-1 rounded-md font-black uppercase shrink-0 ${
-                      isDarkMode
-                        ? "bg-zinc-800 text-zinc-400"
-                        : "bg-slate-100 text-slate-500"
-                    }`}
-                  >
-                    {plan.day} Days
-                  </span>
-                  <span className="bg-emerald-500/10 text-emerald-500 text-[8px] px-2 py-1 rounded-md font-black uppercase shrink-0">
-                    {plan.type}
-                  </span>
-                </div>
-              </div>
-              <Button
-                disabled={isLoading}
-                className={`rounded-xl font-black px-4 h-10 shrink-0 min-w-[80px] pointer-events-none ${
-                  isDarkMode ? "bg-white text-black" : "bg-slate-900 text-white"
+        </div>
+      )}
+
+      {/* PLANS BUNDLE BLOCK (Only renders after criteria options selection) */}
+      {phoneNumber.length === 11 && selectedType && (
+        <div className="px-5 space-y-4 pb-10 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex justify-between items-center px-2">
+            <h3 className="text-[11px] font-black uppercase tracking-[0.3em] opacity-50">
+              Available Bundles
+            </h3>
+            <div className="h-[1px] flex-1 bg-current opacity-5 ml-4" />
+          </div>
+
+          {isFetchingPlans ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="animate-spin text-emerald-500" />
+            </div>
+          ) : currentPlans.length > 0 ? (
+            currentPlans.map((plan) => (
+              <div
+                key={plan.pId}
+                onClick={(e) => !isLoading && handlePurchase(e, plan)}
+                className={`group rounded-[2rem] p-5 flex justify-between items-center gap-3 border transition-all cursor-pointer active:scale-95 w-full ${
+                  isDarkMode
+                    ? "bg-[#1c1425] border-white/5"
+                    : "bg-white border-slate-100 shadow-sm"
                 }`}
               >
-                {userType === "Vendor"
-                  ? `₦${plan.vendorprice}`
-                  : userType === "Agent"
-                  ? `₦${plan.agentprice}`
-                  : `₦${plan.userprice}`}
-              </Button>
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <p className="text-xl font-black tracking-tighter truncate group-hover:text-emerald-500 transition-colors">
+                    {plan.name}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={`text-[8px] px-2 py-1 rounded-md font-black uppercase shrink-0 ${
+                        isDarkMode
+                          ? "bg-zinc-800 text-zinc-400"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {plan.day} Days
+                    </span>
+                    <span className="bg-emerald-500/10 text-emerald-500 text-[8px] px-2 py-1 rounded-md font-black uppercase shrink-0">
+                      {plan.type}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  disabled={isLoading}
+                  className={`rounded-xl font-black px-4 h-10 shrink-0 min-w-[80px] pointer-events-none ${
+                    isDarkMode ? "bg-white text-black" : "bg-slate-900 text-white"
+                  }`}
+                >
+                  {userType === "Vendor"
+                    ? `₦${plan.vendorprice}`
+                    : userType === "Agent"
+                    ? `₦${plan.agentprice}`
+                    : `₦${plan.userprice}`}
+                </Button>
+              </div>
+            ))
+          ) : (
+            <div className="py-20 text-center opacity-20 font-black uppercase tracking-widest italic">
+              No Plans Found
             </div>
-          ))
-        ) : (
-          <div className="py-20 text-center opacity-20 font-black uppercase tracking-widest italic">
-            No Plans Found
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
