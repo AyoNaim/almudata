@@ -19,7 +19,7 @@ jobs:
         with:
           distribution: "zulu"
           java-version: "17"
-          # Removed cache: "gradle" to prevent restoring corrupted artifacts
+          # No cache here to ensure a pure start
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -40,9 +40,15 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          # --refresh-dependencies forces a fresh download of all JARs
-          # --no-daemon prevents background process crashes
-          ./gradlew assembleDebug --no-daemon --refresh-dependencies -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
+          # Nuclear Fix: Create a local gradle home directory to prevent host-level cache corruption
+          mkdir -p gradle_user_home
+          
+          # Run the build, forcing Gradle to use the local folder instead of the system default
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --gradle-user-home=gradle_user_home \
+            --refresh-dependencies \
+            -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
