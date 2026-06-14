@@ -15,8 +15,6 @@ dependencies {
     implementation project(':capacitor-share')
     implementation project(':capacitor-toast')
     implementation project(':capgo-capacitor-passkey')
-    implementation project(':capacitor-biometric-auth')
-    implementation project(':capacitor-native-biometric')
 
 }
 
