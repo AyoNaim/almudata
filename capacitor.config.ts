@@ -4,7 +4,15 @@ const config: CapacitorConfig = {
   appId: "com.fix.almudatasub",
   appName: "Almudatasub",
   webDir: "out",
+  server: {
+      androidScheme: 'https'
+    },
   plugins: {
+    CapacitorPasskey: {
+      origin: 'https://almudatasub.com.ng',
+      autoShim: true,
+      domains: ['almudatasub.com.ng']
+    },
     SplashScreen: {
       launchShowDuration: 3000,
       launchAutoHide: true,

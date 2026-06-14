@@ -4,9 +4,9 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, ArrowUpRight, Fingerprint } from "lucide-react";
 import Link from "next/link";
-import { BiometricAuth } from "capacitor-biometric-auth";
 
 const Login = () => {
+  // We keep the state intuitive for the UI
   const [debugData, setDebugData] = useState(null);
   const [formData, setFormData] = useState({ phone: "", password: "" });
   const [loading, setLoading] = useState(false);
@@ -14,9 +14,7 @@ const Login = () => {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
-  
-  // Replaced webAuthnSupported with a direct check for Native Biometrics
-  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [webAuthnSupported, setWebAuthnSupported] = useState(false);
 
   useEffect(() => {
     const checkSession = () => {
@@ -26,94 +24,134 @@ const Login = () => {
       if (savedSession && savedToken) {
         router.replace("/dashboard");
       } else {
-        setIsChecking(false);
+        setIsChecking(false); // No session found, show the login form
       }
     };
 
     checkSession();
 
-    // Check if the device natively supports Biometrics
-    const checkBiometrics = async () => {
-      try {
-        const info = await (BiometricAuth as any).checkBiometry();
-        setIsBiometricAvailable(info.isAvailable);
-      } catch (err) {
-        console.error("Biometric check failed:", err);
-        setIsBiometricAvailable(false);
+    // Check if WebAuthn (Passkeys) are supported by the platform / browser
+    if (typeof window !== "undefined" && window.PublicKeyCredential) {
+      if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
+        PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+          .then((supported) => {
+            setWebAuthnSupported(supported);
+          })
+          .catch(() => setWebAuthnSupported(false));
+      } else {
+        setWebAuthnSupported(true);
       }
-    };
-
-    checkBiometrics();
+    }
   }, [router]);
 
+  // Helper to convert base64url credentials ID to ArrayBuffer for WebAuthn assertion
+  const decodeBase64Url = (base64Url: string) => {
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+  };
+
+  // Triggered when the fingerprint button is clicked
   const handleBiometricLogin = async () => {
     setLoading(true);
     setError("");
 
+    const savedCredId = localStorage.getItem("biometric_cred_id");
+
+    // CRITICAL FIX: If no biometric key exists locally, fail immediately in the UI.
+    // Triggering navigator.credentials.get with a dummy or empty ID forces the OS 
+    // to launch the generic Passkey/iCloud/Google account selector modal.
+    if (!savedCredId) {
+      setError("No biometric profile found on this device. Please sign in with your password first.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Trigger the Native OS fingerprint/FaceID hardware screen
-      await (BiometricAuth as any).authenticate({
-        reason: "Please authenticate to access your account ",
-        allowDeviceCredential: true,
-      });
+      // Generate a new challenge for assertion
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
 
-      const credId = localStorage.getItem("bio_credentials");
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-
-      const response = await fetch(
-        "https://almudatasub.com.ng/app/api/account/login/index.php",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Token ${today}`,
+      const publicKeyOptions: any = {
+        challenge: challenge,
+        timeout: 60000,
+        userVerification: "required", // Forces direct biometric hardware UI interaction
+        allowCredentials: [
+          {
+            id: decodeBase64Url(savedCredId),
+            type: "public-key",
+            transports: ["internal"], // Strictly locks execution to local device hardware (TouchID/FaceID/Fingerprint)
           },
-          body: JSON.stringify({
-            credentialId: credId,
-            is_biometric: true,
-          }),
-        }
-      );
+        ],
+      };
 
-      const rawText = await response.text();
-      const cleanText = rawText.trim().replace(/^\uFEFF/, "");
+      // Prompt the native OS fingerprint/FaceID hardware verification screen directly
+      const assertion = await navigator.credentials.get({
+        publicKey: publicKeyOptions,
+      });
+      const credId = localStorage.getItem("bio_credentials");
+      if (assertion) {
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const response = await fetch(
+          "https://almudatasub.com.ng/app/api/account/login/index.php",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Token ${today}`,
+            },
+            body: JSON.stringify({
+              credentialId: credId,
+              is_biometric: true, // indicating biometric scan was successful
+            }),
+          }
+        );
 
-      let result;
-      try {
-        result = JSON.parse(cleanText);
-        setDebugData(result);
-      } catch (jsonErr) {
-        console.error("Parsing failed. Raw response was:", rawText);
-        setError("Server communication error. Please try again.");
-        setLoading(false);
-        return;
-      }
+        const rawText = await response.text();
+        const cleanText = rawText.trim().replace(/^\uFEFF/, "");
 
-      if (result.status === "success") {
-        if (!result.token || result.token.includes("FIX_DATABASE")) {
-          setError(
-            "Account Error: Your API Key is missing in the database. Please contact admin."
-          );
+        let result;
+        try {
+          result = JSON.parse(cleanText);
+          setDebugData(result);
+        } catch (jsonErr) {
+          console.error("Parsing failed. Raw response was:", rawText);
+          setError("Server communication error. Please try again.");
           setLoading(false);
           return;
         }
 
-        const sessionData = {
-          token: result.token,
-          user_data: result.user_data || {},
-        };
+        if (result.status === "success") {
+          if (!result.token || result.token.includes("FIX_DATABASE")) {
+            setError(
+              "Account Error: Your API Key is missing in the database. Please contact admin."
+            );
+            setLoading(false);
+            return;
+          }
 
-        localStorage.setItem("user_session", JSON.stringify(sessionData));
-        localStorage.setItem("userToken", sessionData.token);
-        localStorage.setItem("phone", sessionData.user_data.phone);
+          const sessionData = {
+            token: result.token,
+            user_data: result.user_data || {},
+          };
 
-        router.push("/dashboard");
-      } else {
-        setError(result.msg || "Invalid biometric credentials or user not found");
+          localStorage.setItem("user_session", JSON.stringify(sessionData));
+          localStorage.setItem("userToken", sessionData.token);
+          localStorage.setItem("biometric_cred_id", assertion.id);
+          localStorage.setItem("phone", sessionData.user_data.phone);
+
+          router.push("/dashboard");
+        } else {
+          setError(result.msg || "Invalid biometric credentials or user not found");
+        }
       }
     } catch (err) {
       console.error("Biometric Login Error:", err);
-      // BiometricAuth throws an error if the user cancels or the scan fails
       setError("Biometric authentication failed or was cancelled.");
     } finally {
       setLoading(false);
@@ -172,8 +210,44 @@ const Login = () => {
 
         localStorage.setItem("user_session", JSON.stringify(sessionData));
         localStorage.setItem("userToken", sessionData.token);
-        // Ensure phone is stored so subsequent biometric checks can rely on it if your backend requires it
-        localStorage.setItem("phone", sessionData.user_data.phone || formData.phone);
+        
+
+      // Register WebAuthn device biometric key ONLY if not already saved
+      if (webAuthnSupported && !localStorage.getItem("biometric_cred_id")) {
+        try {
+          const challenge = new Uint8Array(32);
+          crypto.getRandomValues(challenge);
+
+          const credential = await navigator.credentials.create({
+            publicKey: {
+              challenge: challenge,
+              rp: { name: "Almu Data Sub" },
+              user: {
+                id: new TextEncoder().encode(formData.phone),
+                name: formData.phone,
+                displayName: formData.phone,
+              },
+              pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+              timeout: 60000,
+              authenticatorSelection: {
+                authenticatorAttachment: "platform",
+                userVerification: "required",
+                residentKey: "discouraged",
+                requireResidentKey: false,
+              },
+            },
+          });
+
+          if (credential) {
+            localStorage.setItem("biometric_cred_id", credential.id);
+            
+            // OPTIONAL: Send this NEW ID to your server here if you need to 
+            // sync the first-time registration to the database
+          }
+        } catch (webAuthnErr) {
+          console.error("Failed to register Biometrics:", webAuthnErr);
+        }
+      }
 
         router.push("/dashboard");
       } else {
@@ -186,7 +260,7 @@ const Login = () => {
       setLoading(false);
     }
   };
-
+  // const credId = localStorage.getItem("bio_credentials");
   if (isChecking) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-white">
@@ -217,7 +291,7 @@ const Login = () => {
         <h1 className="text-3xl font-bold tracking-tight mb-2 text-center w-full">
           Welcome back, User <span className="text-2xl ml-1">😎</span>
         </h1>
-        
+        {/* {debugData && <p className="test-wrap">{JSON.stringify(debugData, null, 2)}</p> } */}
         <button
           type="button"
           onClick={() => router.push("/signup")}
@@ -291,8 +365,8 @@ const Login = () => {
               )}
             </button>
 
-            {/* Render Fingerprint icon ONLY if Capacitor says Biometrics are available */}
-            {isBiometricAvailable && (
+            {/* Fingerprint / Biometric Authentication Trigger */}
+            {webAuthnSupported && (
               <button
                 type="button"
                 onClick={handleBiometricLogin}

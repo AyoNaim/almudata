@@ -16,6 +16,7 @@
     "@capacitor/haptics": "^6.0.3",
     "@capacitor/share": "^6.0.4",
     "@capacitor/toast": "^6.0.4",
+    "@capgo/capacitor-passkey": "^8.3.5",
     "capacitor-biometric-auth": "^0.1.1",
     "capacitor-native-biometric": "^4.2.2",
     "class-variance-authority": "^0.7.1",

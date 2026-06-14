@@ -20,8 +20,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { useRouter } from "next/navigation";
-import { Capacitor } from "@capacitor/core";
-import { BiometricAuth } from "capacitor-biometric-auth";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -143,31 +141,25 @@ export default function ProfilePage() {
 
     syncDataFromStorage();
 
-    // Native Capacitor Biometric availability check
-    const checkBiometrics = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const info = await (BiometricAuth as any).checkBiometry();
-          setIsBiometricAvailable(info.isAvailable);
-          
-          if (info.isAvailable) {
+    // Native WebAuthn availability check
+    if (window.PublicKeyCredential) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then((available) => {
+          setIsBiometricAvailable(available);
+          if (available) {
             const isEnrolled = localStorage.getItem("biometrics_enabled") === "true";
             setBiometricsEnabled(isEnrolled);
           }
-        } catch (err) {
-          console.error("Biometric check failed:", err);
-          setIsBiometricAvailable(false);
-        }
-      } else {
-        setIsBiometricAvailable(false);
-      }
-    };
+        })
+        .catch(console.error);
+    } else {
+      setIsBiometricAvailable(false);
+    }
 
-    checkBiometrics();
     setLoading(false);
   }, [syncDataFromStorage]);
 
-  const handleToggleBiometrics = async () => {
+const handleToggleBiometrics = async () => {
     try { await Haptics.impact({ style: ImpactStyle.Medium }); } catch (e) {}
 
     if (biometricsEnabled) {
@@ -175,56 +167,79 @@ export default function ProfilePage() {
       localStorage.setItem("biometrics_enabled", "false");
       localStorage.removeItem("bio_phone");
       localStorage.removeItem("bio_pass");
-      localStorage.removeItem("bio_credentials"); // Clear generated ID
       setBiometricsEnabled(false);
     } else {
-      // Enabling Biometrics via Capacitor Native Hardware
+      // Enabling Biometrics via WebAuthn
       const raw = localStorage.getItem("user_session");
       if (!raw) return;
 
-      if (!Capacitor.isNativePlatform()) {
-        alert("Biometrics are only supported on native mobile devices.");
+      if (!window.PublicKeyCredential) {
+        alert("Biometrics not supported on this device/browser.");
         return;
       }
 
       try {
-        // 1. Prompt Native Hardware to verify user presence
-        await (BiometricAuth as any).authenticate({
-          reason: "Authenticate to register your fingerprint",
-          allowDeviceCredential: true, 
-        });
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
 
-        // 2. Generate a secure, simulated "Credential ID" to mimic WebAuthn behavior for your Backend
-        const randomBytes = new Uint8Array(32);
-        window.crypto.getRandomValues(randomBytes);
-        const credIdString = window.btoa(String.fromCharCode(...randomBytes));
-        
-        localStorage.setItem("bio_credentials", credIdString);
-        
-        // --- SEND TO BACKEND ENDPOINT ---
-        const response = await fetch("https://almudatasub.com.ng/app/api/user/register-biometric/index.php", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
+        const userID = new Uint8Array(16);
+        window.crypto.getRandomValues(userID);
+
+        // Triggers the Android/iOS Fingerprint or FaceID enrollment scanner
+        const credential = await navigator.credentials.create({
+          publicKey: {
+            challenge: challenge,
+            rp: {
+              name: "AlmuDataSub",
+            },
+            user: {
+              id: userID,
+              name: userData.phone || "user",
+              displayName: userData.full_name || "User",
+            },
+            pubKeyCredParams: [
+              { type: "public-key", alg: -7 },   // ES256
+              { type: "public-key", alg: -257 }, // RS256
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform", // Forces hardware biometrics
+              userVerification: "required",
+              residentKey: "discouraged",          // FIX: Prevents forcing iCloud/Google Passkey UI
+              requireResidentKey: false,           // FIX: Demotes to local device-bound biometric key
+            },
+            timeout: 60000,
           },
-          body: JSON.stringify({
-            phone: userData.phone,
-            credential_id: credIdString // Sending the securely generated string
-          })
         });
-        
-        const result = await response.json();
 
-        if (result.status === "success") {
-          localStorage.setItem("biometrics_enabled", "true");
-          localStorage.setItem("bio_phone", userData.phone);
-          setBiometricsEnabled(true);
+        if (credential) {
+          const credIdString = typeof credential.id === 'string' ? credential.id : window.btoa(String.fromCharCode(...new Uint8Array(credential.id)));
+          localStorage.setItem("bio_credentials", credIdString);
           
-          try { await Haptics.notification({ type: NotificationType.Success }); } catch (e) {}
-          alert("Biometric authentication successfully enabled and saved!");
-        } else {
-          try { await Haptics.notification({ type: NotificationType.Error }); } catch (e) {}
-          alert(result.msg || "Biometrics scanned, but failed to save to database.");
+          // --- SEND TO BACKEND ENDPOINT ---
+          const response = await fetch("https://almudatasub.com.ng/app/api/user/register-biometric/index.php", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              phone: userData.phone,
+              credential_id: credential.id
+            })
+          });
+          
+          const result = await response.json();
+
+          if (result.status === "success") {
+            localStorage.setItem("biometrics_enabled", "true");
+            localStorage.setItem("bio_phone", userData.phone);
+            setBiometricsEnabled(true);
+            
+            try { await Haptics.notification({ type: NotificationType.Success }); } catch (e) {}
+            alert("Biometric authentication successfully enabled and saved!");
+          } else {
+            try { await Haptics.notification({ type: NotificationType.Error }); } catch (e) {}
+            alert(result.msg || "Biometrics scanned, but failed to save to database.");
+          }
         }
       } catch (err) {
         console.error("Biometric enrollment error:", err);
