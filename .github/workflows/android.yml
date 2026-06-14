@@ -19,7 +19,7 @@ jobs:
         with:
           distribution: "zulu"
           java-version: "17"
-          cache: "gradle"
+          # Removed cache: "gradle" to prevent restoring corrupted artifacts
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -36,16 +36,13 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # ADDED: Clean the Gradle cache to prevent "Failed to create Jar file" errors
-      - name: Clean Gradle Cache
-        run: rm -rf ~/.gradle/caches/
-
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
-          # ADDED: --no-daemon and memory flags to prevent process crashes
-          ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
+          # --refresh-dependencies forces a fresh download of all JARs
+          # --no-daemon prevents background process crashes
+          ./gradlew assembleDebug --no-daemon --refresh-dependencies -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
