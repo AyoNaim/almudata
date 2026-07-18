@@ -13,9 +13,10 @@ const Login = () => {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
-  
-  // Track if hardware biometrics are active and setup
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+
+  // A unique identifier for your app's secure vault
+  const SECURE_SERVER_KEY = "almudatasub_secure_vault"; 
 
   useEffect(() => {
     const checkSession = () => {
@@ -31,7 +32,6 @@ const Login = () => {
 
     checkSession();
 
-    // Check Capacitor Native Hardware Biometrics compatibility
     const checkNativeBiometrics = async () => {
       try {
         const result = await NativeBiometric.isAvailable();
@@ -39,7 +39,7 @@ const Login = () => {
           setIsBiometricSupported(true);
         }
       } catch (err) {
-        console.log("Native biometrics unavailable or unsupported on this browser/platform:", err);
+        console.log("Biometrics not available.");
         setIsBiometricSupported(false);
       }
     };
@@ -47,87 +47,73 @@ const Login = () => {
     checkNativeBiometrics();
   }, [router]);
 
-  // Handle Hardware Native Verification
+  // -------------------------------------------------------------
+  // 1. BIOMETRIC LOGIN: Retrieve Secure Credentials & Auto-Login
+  // -------------------------------------------------------------
   const handleBiometricLogin = async () => {
     setLoading(true);
     setError("");
 
     try {
-      // Trigger Native Fingerprint / FaceID system UI sheet
+      // First, trigger the visual UI prompt for the user
       await NativeBiometric.verifyIdentity({
-        reason: "Log in to your Almu Data Sub account securely",
+        reason: "Log in securely to your account",
         title: "Biometric Sign-In",
         subtitle: "Verify your identity",
-        description: "Touch the fingerprint sensor or scan face to continue",
+        description: "Touch the fingerprint sensor to continue",
       });
 
-      // Hardware verified successfully!
-      const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const storedPhone = localStorage.getItem("phone") || "";
+      // If verified, retrieve the password from the hardware Keychain
+      const credentials = await NativeBiometric.getCredentials({
+        server: SECURE_SERVER_KEY,
+      });
 
-      // Send status to your backend
-      const response = await fetch(
-        "https://almudatasub.com.ng/app/api/account/login/index.php",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Token ${today}`,
-          },
-          body: JSON.stringify({
-            phone: storedPhone, 
-            is_biometric: true,
-          }),
-        }
-      );
+      // Execute standard login using the retrieved hardware credentials
+      await executeServerLogin(credentials.username, credentials.password);
 
-      const rawText = await response.text();
-      const cleanText = rawText.trim().replace(/^\uFEFF/, "");
-
-      let result;
-      try {
-        result = JSON.parse(cleanText);
-      } catch (jsonErr) {
-        setError("Server communication error. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      if (result.status === "success") {
-        if (!result.token || result.token.includes("FIX_DATABASE")) {
-          setError("Account Error: Your API Key is missing in the database. Please contact admin.");
-          setLoading(false);
-          return;
-        }
-
-        const sessionData = {
-          token: result.token,
-          user_data: result.user_data || {},
-        };
-
-        localStorage.setItem("user_session", JSON.stringify(sessionData));
-        localStorage.setItem("userToken", sessionData.token);
-        if (sessionData.user_data.phone) {
-          localStorage.setItem("phone", sessionData.user_data.phone);
-        }
-
-        router.push("/dashboard");
-      } else {
-        setError(result.msg || "Biometric authentication record invalid on system server.");
-      }
     } catch (err: any) {
-      console.error("Native Biometric Verification Error:", err);
-      setError("Biometric authentication failed or was cancelled.");
-    } finally {
+      console.error("Biometric Error:", err);
+      // If the error is ItemNotFound, it means they haven't logged in with a password yet
+      if (err.message && err.message.includes("ItemNotFound")) {
+        setError("No fingerprint data saved. Please log in with your password first to enable biometrics.");
+      } else {
+        setError("Biometric authentication failed or was cancelled.");
+      }
       setLoading(false);
     }
   };
 
+  // -------------------------------------------------------------
+  // 2. STANDARD LOGIN: Attempt Login & Save Secure Credentials
+  // -------------------------------------------------------------
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
+    const success = await executeServerLogin(formData.phone, formData.password);
+
+    if (success && isBiometricSupported) {
+      try {
+        // If login was successful, save the credentials securely in the hardware
+        // so they can use their fingerprint next time.
+        await NativeBiometric.setCredentials({
+          username: formData.phone,
+          password: formData.password,
+          server: SECURE_SERVER_KEY,
+        });
+      } catch (err) {
+        console.error("Failed to save biometric credentials:", err);
+      }
+    }
+    
+    setLoading(false);
+  };
+
+  // -------------------------------------------------------------
+  // 3. REUSABLE API LOGIN FUNCTION
+  // -------------------------------------------------------------
+  const executeServerLogin = async (phoneToUse: string, passwordToUse: string) => {
     try {
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
 
@@ -140,8 +126,8 @@ const Login = () => {
             Authorization: `Token ${today}`,
           },
           body: JSON.stringify({
-            phone: formData.phone,
-            accesspass: formData.password,
+            phone: phoneToUse,
+            accesspass: passwordToUse,
           }),
         }
       );
@@ -154,15 +140,13 @@ const Login = () => {
         result = JSON.parse(cleanText);
       } catch (jsonErr) {
         setError("Server communication error. Please try again.");
-        setLoading(false);
-        return;
+        return false;
       }
 
       if (result.status === "success") {
         if (!result.token || result.token.includes("FIX_DATABASE")) {
           setError("Account Error: Your API Key is missing in the database. Please contact admin.");
-          setLoading(false);
-          return;
+          return false;
         }
 
         const sessionData = {
@@ -172,21 +156,21 @@ const Login = () => {
 
         localStorage.setItem("user_session", JSON.stringify(sessionData));
         localStorage.setItem("userToken", sessionData.token);
-        if (formData.phone) {
-          localStorage.setItem("phone", formData.phone);
-        }
+        localStorage.setItem("phone", phoneToUse);
 
         router.push("/dashboard");
+        return true;
       } else {
         setError(result.msg || "Invalid login credentials");
+        return false;
       }
     } catch (err) {
       setError("Connection failed. Check your internet.");
-    } finally {
-      setLoading(false);
+      return false;
     }
   };
 
+  // ... (UI Rendering code remains exactly the same as the previous response) ...
   if (isChecking) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-white">
@@ -276,7 +260,6 @@ const Login = () => {
               )}
             </button>
 
-            {/* Render Fingerprint icon ONLY if native biometric hardware status is active/available */}
             {isBiometricSupported && (
               <button
                 type="button"
