@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.fix.almudatasub",
-  appName: "Almudatasub",
+  appName: "Almu datasub",
   webDir: "out",
   server: {
       androidScheme: 'https'
