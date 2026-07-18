@@ -19,6 +19,7 @@
     "@capacitor/ios": "8.4.0",
     "@capacitor/share": "8.0.1",
     "@capacitor/toast": "8.0.1",
+    "@capgo/capacitor-native-biometric": "^8.6.2",
     "@capgo/capacitor-passkey": "8.3.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
